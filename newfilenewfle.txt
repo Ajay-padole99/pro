@@ -1,0 +1,468 @@
+Resources
+    src(f)
+         com.app.controller(p)
+                      AdminController.java
+                      Usercontroller.java
+         com.app.dao(p)
+                        IvendorDao.java
+                        VendorDaoImpl.java
+          com.app.pojo
+                       vedor.java
+               com.app.service
+                            IVendorService.java
+                             VendorServiceImpl.java
+
+     resurces(f)
+               database.properties
+               hibernet-persistence.xml
+               log4j.properties
+      
+WebContent
+       
+    WEB-INF
+       views(f)
+               admin(f)
+                          list.jsp
+                user
+                     login.jsp
+                      logout.jsp
+                vendor
+                       details.jsp
+                 
+      spring-servlet.xml
+      web.xml
+ index.jsp
+
+
+
+
+
+com.app.controller
+                 AdminController.java
+
+
+
+
+
+package com.app.controller;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+
+import com.app.service.IVendorService;
+
+@Controller
+@RequestMapping("/admin")
+public class AdminController {
+	// dependency
+	@Autowired
+	private IVendorService service;
+
+	public AdminController() {
+		System.out.println("in constr of " + getClass().getName());
+	}
+
+	@GetMapping("/list")
+	public String showVendorList(Model map) {
+		System.out.println("in list vendor");
+		// save vendor under model map
+		map.addAttribute("vendor_list", service.listVendors());
+		return "/admin/list"; //forward view name
+	}
+
+}
+  
+
+
+
+
+                   UserController.java
+
+
+
+package com.app.controller;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.HttpSession;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import com.app.pojos.Vendor;
+import com.app.service.IVendorService;
+
+@Controller
+@RequestMapping("/user")
+public class UserController {
+	// dependency
+	@Autowired
+	private IVendorService service;
+
+	public UserController() {
+		System.out.println("in def constr of " + getClass().getName());
+	}
+
+	// req handling method to show login form
+	@GetMapping("/login")
+	public String showLoginForm() {
+		System.out.println("in show login form");
+		return "/user/login";
+	}
+
+	// req handling method to process login form
+	@PostMapping("/login") // =@RequestMapping + method=post
+	public String processLoginForm(Model map, 
+			@RequestParam String email,
+			@RequestParam String password,
+			HttpSession hs) {
+		System.out.println("in process login form");
+		try {
+			// invoke service layer method
+			Vendor v = service.validateUser(email, password);
+			// login success
+			map.addAttribute("status", "Login Successful....");
+			// store user details under session scope
+			hs.setAttribute("user_dtls", v);
+			// chk role
+			if (v.getRole().equals("admin")) // admin login
+			{
+					return "redirect:/admin/list";//replace by redirect
+			}
+			// vendor login
+			return "/vendor/details";
+		} catch (RuntimeException e) {
+			System.out.println("err in user controller " + e);
+			// invalid login
+			// add err mesg as model attribute ---req scope
+			map.addAttribute("status", "Invalid Login , Pls retry!!!!");
+			return "/user/login";
+		}
+		
+
+	}
+	// req handling method for user log out
+	@GetMapping("/logout")
+	public String userLogout(HttpSession hs,Model map,
+			HttpServletRequest request,HttpServletResponse response) {
+		System.out.println("in user logout");
+		//save user dtls from session scope ---> request scope
+		map.addAttribute("dtls",hs.getAttribute("user_dtls"));
+		//invalidate user's session
+		hs.invalidate();
+		//navigate the clnt to index page after slight dly
+		response.setHeader("refresh", 
+				"5;url="+request.getContextPath());
+		return "/user/logout";
+	}
+}
+
+
+
+
+
+
+com.app.dao
+                                   IVendorDao.jva
+
+package com.app.dao;
+
+import java.util.List;
+
+import com.app.pojos.Vendor;
+
+public interface IVendorDao {
+	Vendor validateUser(String email,String pass);
+	List<Vendor> listVendors();
+}
+
+
+                                      VendorDaoImpl.java
+
+package com.app.dao;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Repository;
+
+import com.app.pojos.Vendor;
+
+import java.util.List;
+
+import org.hibernate.*;
+
+@Repository
+public class VendorDaoImpl implements IVendorDao {
+	// dependency
+	@Autowired // byType
+	private SessionFactory sf;
+
+	public VendorDaoImpl() {
+		System.out.println("in cnstr of " + getClass().getName());
+	}
+
+	@Override
+	public Vendor validateUser(String email, String pass) {
+		String jpql = "select v from Vendor v where v.email=:em and v.password=:pa";
+		return sf.getCurrentSession().createQuery(jpql, Vendor.class).setParameter("em", email).setParameter("pa", pass)
+				.getSingleResult();
+	}
+
+	@Override
+	public List<Vendor> listVendors() {
+		String jpql = "select v from Vendor v where v.role=:role";
+		return sf.getCurrentSession().
+				createQuery(jpql, Vendor.class).
+				setParameter("role", "vendor").getResultList();
+	}
+
+}
+
+
+
+
+
+
+com.app.pojo
+                                Vendor.java
+ package com.app.pojos;
+
+import java.util.Date;
+
+import javax.persistence.*;
+@Entity
+@Table(name="vendors")
+public class Vendor {
+	private Integer id;
+	private String name,email,password,role,city,phoneNo;
+	private double regAmount;
+	private Date regDate;
+	public Vendor() {
+		// TODO Auto-generated constructor stub
+	}
+	public Vendor(String name, String email, String password, String role, String city, String phoneNo,
+			double regAmount, Date regDate) {
+		super();
+		this.name = name;
+		this.email = email;
+		this.password = password;
+		this.role = role;
+		this.city = city;
+		this.phoneNo = phoneNo;
+		this.regAmount = regAmount;
+		this.regDate = regDate;
+	}
+	@Id
+	@GeneratedValue(strategy=GenerationType.IDENTITY)
+	public Integer getId() {
+		return id;
+	}
+	public void setId(Integer id) {
+		this.id = id;
+	}
+	@Column(length=20)
+	public String getName() {
+		return name;
+	}
+	public void setName(String name) {
+		this.name = name;
+	}
+	@Column(length=20,unique=true)
+	public String getEmail() {
+		return email;
+	}
+	public void setEmail(String email) {
+		this.email = email;
+	}
+	@Column(length=20)
+	public String getPassword() {
+		return password;
+	}
+	public void setPassword(String password) {
+		this.password = password;
+	}
+	@Column(length=20)
+	public String getRole() {
+		return role;
+	}
+	public void setRole(String role) {
+		this.role = role;
+	}
+	@Column(length=20)
+	public String getCity() {
+		return city;
+	}
+	public void setCity(String city) {
+		this.city = city;
+	}
+	@Column(length=10,unique=true)
+	public String getPhoneNo() {
+		return phoneNo;
+	}
+	public void setPhoneNo(String phoneNo) {
+		this.phoneNo = phoneNo;
+	}
+	@Column(name="reg_amt")
+	public double getRegAmount() {
+		return regAmount;
+	}
+	public void setRegAmount(double regAmount) {
+		this.regAmount = regAmount;
+	}
+	@Column(name="reg_date")
+	@Temporal(TemporalType.DATE)
+	public Date getRegDate() {
+		return regDate;
+	}
+	public void setRegDate(Date regDate) {
+		this.regDate = regDate;
+	}
+	@Override
+	public String toString() {
+		return "Vendor [id=" + id + ", name=" + name + ", email=" + email + ", password=" + password + ", role=" + role
+				+ ", city=" + city + ", phoneNo=" + phoneNo + ", regAmount=" + regAmount + ", regDate=" + regDate + "]";
+	}
+	
+
+}
+
+
+
+com.app.service
+
+                   IVendorService.java
+package com.app.service;
+
+import java.util.List;
+
+import com.app.pojos.Vendor;
+
+public interface IVendorService {
+	Vendor validateUser(String email,String pass);
+	List<Vendor> listVendors();
+}
+ 
+
+
+
+
+
+
+  
+                           VendorServiceImpl.java
+
+
+package com.app.service;
+
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.app.dao.IVendorDao;
+import com.app.pojos.Vendor;
+
+@Service //to tell SC that this comp contains B.L
+@Transactional //to automate tx management
+public class VendorServiceImpl implements IVendorService {
+	//dependency
+	@Autowired
+	private IVendorDao dao;
+	
+	@Override
+	public Vendor validateUser(String email, String pass) {
+		// TODO Auto-generated method stub
+		return dao.validateUser(email, pass);
+	}
+
+	@Override
+	public List<Vendor> listVendors() {
+		// TODO Auto-generated method stub
+		return dao.listVendors();
+	}
+	
+
+}
+
+
+Webcontent
+            WEB-INF
+                     views
+                                  spring-servlet.xml
+
+             <?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:mvc="http://www.springframework.org/schema/mvc" xmlns:p="http://www.springframework.org/schema/p"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-4.3.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.3.xsd
+		http://www.springframework.org/schema/mvc http://www.springframework.org/schema/mvc/spring-mvc-4.3.xsd">
+
+	<context:annotation-config />
+	<context:component-scan base-package="com.app"/>
+	<mvc:annotation-driven/>
+	<!-- configure view resolver bean for auto transalation -->
+	<bean id="viewResolver" class="org.springframework.web.servlet.view.InternalResourceViewResolver"
+	p:prefix="/WEB-INF/views/" p:suffix=".jsp" p:viewClass="org.springframework.web.servlet.view.JstlView"
+	/>
+	<!-- import hibernate config xml file -->
+	<import resource="classpath:/hibernate-persistence.xml"/>
+	
+</beans>
+
+
+
+                           
+                              web.xml
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://xmlns.jcp.org/xml/ns/javaee" xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee http://xmlns.jcp.org/xml/ns/javaee/web-app_3_1.xsd" id="WebApp_ID" version="3.1">
+  <display-name>day12_spring_mvc_hibernate</display-name>
+  <welcome-file-list>
+		<welcome-file>index.jsp</welcome-file>
+	</welcome-file-list>
+	<servlet>
+		<servlet-name>spring</servlet-name>
+		<servlet-class>org.springframework.web.servlet.DispatcherServlet</servlet-class>
+		<load-on-startup>1</load-on-startup>
+	</servlet>
+	<servlet-mapping>
+		<servlet-name>spring</servlet-name>
+		<url-pattern>/</url-pattern>
+	</servlet-mapping>
+
+</web-app>          
+
+
+
+
+index.jsp
+
+
+<%@ page language="java" contentType="text/html; charset=UTF-8"
+	pageEncoding="UTF-8"%>
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Insert title here</title>
+</head>
+<body>
+	<h4>
+		<a href="user/login">User Login</a>
+	</h4>
+</body>
+</html>              
+                           
+
+
+
+
+
